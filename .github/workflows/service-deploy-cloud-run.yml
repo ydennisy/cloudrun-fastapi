@@ -1,0 +1,51 @@
+name: "[CloudRun - FastAPI] Build and *Deploy"
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  
+  workflow_dispatch:
+    branches:
+      - main
+      - develop
+
+env:
+  RUN_REGION: europe-west1
+  SERVICE_NAME: cloudrun-fastapi
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set env to dev
+        if: ${{ !endsWith(github.ref, '/main') }}
+        run: |
+          echo "GCP_PROJECT=ag-edgekit-dev" >> $GITHUB_ENV
+
+      - name: Set env to prod
+        if: ${{ endsWith(github.ref, '/main') }}
+        run: |
+          echo "GCP_PROJECT=ag-edgekit-prod" >> $GITHUB_ENV
+
+      # Setup gcloud CLI
+      - uses: google-github-actions/setup-gcloud@master
+        with:
+          version: 'latest'
+          service_account_key: ${{ (!endsWith(github.ref, '/main') && secrets.GCP_CREDENTIALS_DEV) || secrets.GCP_CREDENTIALS_PROD }}
+          project_id: ${{ env.GCP_PROJECT }}
+
+      # Build and push image to Google Container Registry.
+      - name: Build
+        run: make gcloud-build
+
+      # Deploy image to Cloud Run.
+      - name: Deploy
+        run: make gcloud-deploy
